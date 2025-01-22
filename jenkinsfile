@@ -1,0 +1,50 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_REGION = 'us-west-2'
+        TF_VAR_AWS_ACCESS_KEY_ID = credentials('aws_access_key_id') // Store AWS credentials securely
+        TF_VAR_AWS_SECRET_ACCESS_KEY = credentials('aws_secret_access_key')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/your-repository/web-scraping-lambda.git'
+            }
+        }
+
+        stage('Build Lambda Artifact in Docker') {
+            steps {
+                script {
+                    docker.build('lambda-build', '-f Dockerfile .')
+                    sh 'docker cp $(docker ps -alq):/app/lambda-function.zip ./lambda-function.zip'
+                }
+            }
+        }
+
+
+        stage('Deploy Infrastructure with Terraform') {
+            steps {
+                script {
+                    sh 'terraform init terraform/'
+                    sh 'terraform apply -auto-approve terraform/'
+                }
+            }
+        }
+
+        stage('Post Deployment') {
+            steps {
+                script {
+                    sh 'aws lambda invoke --function-name webScrapingLambda output.txt --region $AWS_REGION'
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs() 
+        }
+    }
+}
